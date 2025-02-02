@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "サーバーのデバッグ",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/server.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "クライアントのデバッグ",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/client.py",
+      "console": "integratedTerminal"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "サーバーとクライアントを同時デバッグ",
+      "configurations": ["サーバーのデバッグ", "クライアントのデバッグ"]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import secrets
 import base64
 import datetime
 from modules import TCPProtocolHandler, UDPProtocolHandler
+import queue
 
 class ChatServer:
     def __init__(self):
@@ -81,7 +82,20 @@ class ChatServer:
     def validate_message(self, parsed_message_data, client_address):
         room_name = parsed_message_data["room_name"]
         token = parsed_message_data["token"]
-        
+
+
+
+        # TCPとUDPでサーバーが異なるポートでクライアントを認識するため、TCP接続時のipアドレスがUDP接続時のipアドレスと一致したら、rooms情報のポートはUDPのポートに更新する。
+        for (ip, port) in list(self.rooms[room_name]["members"].keys()):
+            if ip == client_address[0]:
+                # ポート番号だけを更新
+                new_address = (ip, client_address[1])
+
+                # トークン情報など既存データを保持しつつ、新しいアドレスで登録
+                self.rooms[room_name]["members"][new_address] = self.rooms[room_name]["members"].pop((ip, port))
+                self.rooms[room_name]["last_access"][new_address] = self.rooms[room_name]["last_access"].pop((ip, port))
+                break
+
         # トークンとアドレスが一致するかどうか
         if self.rooms[room_name]["members"][client_address]["token"] == token:
             return True
@@ -91,29 +105,39 @@ class ChatServer:
     # 役割：リレーメッセージの作成、リレー先のアドレスリストの作成
     # 戻り値：リレーメッセージ、リレー先のアドレスリスト
     def handle_chat_message(self, parsed_message_data):
+        print("handle_chat_message関数の処理")
         # リレー先アドレスの作成
-        address_list = list(self.rooms[parsed_message_data["room_name"]]["member"].keys())
+        address_list = list(self.rooms[parsed_message_data["room_name"]]["members"].keys())
 
-        return UDPProtocolHandler.make_chat_message(parsed_message_data), address_list
+        print(address_list)
+
+        content = parsed_message_data["content"]
+        user_name = content["user_name"]
+        chat_data = content["chat_data"]
+
+        return UDPProtocolHandler.make_relay_message(user_name, chat_data), address_list
 
     # 役割：退出するユーザー情報の削除(ホストの場合はルームの削除、ゲストのアドレスリストの取得、ゲストへのクローズメッセージの作成)
     # 戻り値：ホストの場合のみ ゲストのアドレスリスト、ゲストへのクローズメッセージ
     def handle_leave_message(self, room_name, client_address):
         with self.lock:
+
             if room_name not in self.rooms:
                 return None, None
             
             # ルーム情報を取得
             room = self.rooms[room_name]
 
+            # ルームの最初のアドレスと一致すればホスト。
+            is_host = list(room["members"].keys())[0] == client_address
+
             # クライアント情報を削除
             if client_address in room["members"]:
-                del room["menbers"][client_address]
+                del room["members"][client_address]
                 del room["last_access"][client_address]
                 print(f"クライアント{client_address}がルーム'{room_name}'から退出しました。")
 
-            # ルームの最初のアドレスと一致すればホスト。
-            is_host = list(room["members"].keys())[0] == client_address
+
             
             # ホストが退出する場合、ルームを削除
             if is_host:
@@ -165,13 +189,11 @@ class TCPServer:
                 connection, client_address = self.sock.accept()
                 print(f"TCP接続受信: {client_address}")
 
-                handle_request_thread = threading.Thread(target=self.handle_request, args=(connection, client_address))
-                handle_request_thread.start()
+                threading.Thread(target=self.handle_request, args=(connection, client_address)).start()
 
         except Exception as e:
             print(e)
         finally:
-            handle_request_thread.join()
             self.sock.close()
             print("TCP 接続を閉じました。")
 
@@ -179,42 +201,49 @@ class TCPServer:
     # 戻り値：無し
     def handle_request(self, connection, client_address):
         try:
-            # リクエストデータの取得
-            request_data = connection.recv(4096)
-            # リクエストデータの解析
-            parsed_request_data = TCPProtocolHandler.parse_data(request_data)
-            room_name = parsed_request_data["room_name"]
-            operation = parsed_request_data["operation"]
-            operation_payload = parsed_request_data["operation_payload"]
-            user_name = operation_payload["user_name"]
+            while True:
+                # リクエストデータの取得
+                request_data = connection.recv(4096)
+                print(f"tcpリクエストデータ{request_data}")
 
-            # 現在は全てのリクエストに対して認証の成功を返している。
-            # 今後バリデーションを加えて、認証の失敗も返していく。
-            # 例えばルームの参加の場合はパスワードを入力させるとか。ルームの作成は管理者idを持つ人のみが作成できるなど。
-            is_valid_request, auth_response = self.chat_server.validate_request(parsed_request_data)
+                if not request_data:
+                    break
 
-            # 認証レスポンスの送信
-            connection.send(auth_response)
+                # リクエストデータの解析
+                parsed_request_data = TCPProtocolHandler.parse_data(request_data)
+                room_name = parsed_request_data["room_name"]
+                operation = parsed_request_data["operation"]
+                operation_payload = parsed_request_data["operation_payload"]
+                user_name = operation_payload["user_name"]
 
-            if not is_valid_request:
-                raise 
+                # 現在は全てのリクエストに対して認証の成功を返している。
+                # 今後バリデーションを加えて、認証の失敗も返していく。
+                # 例えばルームの参加の場合はパスワードを入力させるとか。ルームの作成は管理者idを持つ人のみが作成できるなど。
+                is_valid_request, auth_response = self.chat_server.validate_request(parsed_request_data)
 
-            # ルームの作成リクエストの場合
-            if operation == 1:
-                processed_response = self.chat_server.handle_create_room_request(room_name, user_name, client_address) 
 
-            # ルーム参加リクエストの場合
-            elif operation == 2 and operation_payload["operation_mode"] == "JOIN":
-                processed_response = self.chat_server.handle_join_room_request(room_name, user_name,client_address)
-            
-            # ルーム一覧の取得リクエストの場合
-            elif operation == 2 and operation_payload["operation_mode"] == "GET":
-                processed_response = self.chat_server.handle_get_room_list_request()
-            
-            # 次のレスポンスの送信
-            connection.send(processed_response)
+                # 認証レスポンスの送信
+                connection.send(auth_response)
+                print(f"認証レスポンス：{auth_response}を送信しました。")
 
-        
+                if not is_valid_request:
+                    raise 
+
+                # ルームの作成リクエストの場合
+                if operation == 1:
+                    processed_response = self.chat_server.handle_create_room_request(room_name, user_name, client_address) 
+
+                # ルーム参加リクエストの場合
+                elif operation == 2 and operation_payload["operation_mode"] == "JOIN":
+                    processed_response = self.chat_server.handle_join_room_request(room_name, user_name,client_address)
+                
+                # ルーム一覧の取得リクエストの場合
+                elif operation == 2 and operation_payload["operation_mode"] == "GET":
+                    processed_response = self.chat_server.handle_get_room_list_request()
+                
+                # 次のレスポンスの送信
+                connection.send(processed_response)
+
         except Exception as e:
             print(f"TCPハンドリングエラー: {e}")
 
@@ -229,6 +258,7 @@ class UDPServer:
         self.server_address = (server_ip, server_port)
         self.chat_server = chat_server
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.message_queue = queue.Queue()
 
     # 役割：サーバーのバインドとメッセージの受信
     # 戻り値：無し
@@ -237,11 +267,13 @@ class UDPServer:
             self.sock.bind(self.server_address)
             print(f"UDPサーバー起動: {self.server_address}")
 
+            threading.Thread(target=self.handle_message).start()
+
             while True:
                 message_data, client_address = self.sock.recvfrom(4096)
-                parsed_message_data = UDPProtocolHandler.parse_message(message_data)
+                print(f"{message_data}をrun関数で受信しました")
+                self.message_queue.put((message_data, client_address))
 
-                self.handle_message(parsed_message_data, client_address)
         except Exception as e:
             print(e)
         finally:
@@ -250,26 +282,30 @@ class UDPServer:
 
     # 役割：メッセージのバリデーション、メッセージの種類に応じた処理、メッセージのリレー
     # 戻り値：無し
-    def handle_message(self, parsed_message_data, client_address):
-        is_valid_message = self.chat_server.validate_message(parsed_message_data, client_address)
+    def handle_message(self):
+        while True:
+            message_data, client_address = self.message_queue.get()
+            parsed_message_data = UDPProtocolHandler.parse_message(message_data)
 
-        if not is_valid_message:
-            return
+            # is_valid_message = self.chat_server.validate_message(parsed_message_data, client_address)
 
-        room_name = parsed_message_data["room_name"]
-        status = parsed_message_data["content"]["status"]
+            # if not is_valid_message:
+            #     return
 
-        if status == "CHAT":
-            message, address_list = self.chat_server.handle_chat_message(parsed_message_data)
+            room_name = parsed_message_data["room_name"]
+            status = parsed_message_data["content"]["status"]
 
-            if message is not None:
-                self.relay_message(message, address_list, client_address)
+            if status == "CHAT":
+                message, address_list = self.chat_server.handle_chat_message(parsed_message_data)
 
-        elif status == "LEAVE":
-            message, guest_addess_list = self.chat_manager.handle_leave_message(room_name, client_address)
+                if message is not None:
+                    self.relay_message(message, address_list, client_address)
 
-            if message is not None:
-                self.relay_message(message, guest_addess_list, client_address)
+            elif status == "LEAVE":
+                message, guest_addess_list = self.chat_server.handle_leave_message(room_name, client_address)
+
+                if message is not None:
+                    self.relay_message(message, guest_addess_list, client_address)
 
     # 役割：非アクティブユーザー情報の取得、非アクティブユーザーへのクローズメッセージの送信
     # 戻り値：無し
@@ -281,16 +317,18 @@ class UDPServer:
 
     # 役割：メッセージのリレー
     # 戻り値：無し
-    def relay_message(self, message, guest_address_list, host_address=""):
-        for guest_address in guest_address_list:
-            if host_address is not None and guest_address != host_address:
-                self.sock.sendto(message, guest_address)
+    def relay_message(self, message, othres_address_list, client_address=""):
+        print("relay_message関数")
+        for other_address in othres_address_list:
+            if client_address is not None and other_address != client_address:
+                print(f"{client_address}から{other_address}に{message}を送信しました。")
+                self.sock.sendto(message, other_address)
 
 
 if __name__ == "__main__":
     server_ip = "0.0.0.0"
-    tcp_port = 9003
-    udp_port = 9004
+    tcp_port = 9022
+    udp_port = 9014
 
     chat_server = ChatServer()
     tcp_server = TCPServer(server_ip, tcp_port, chat_server)
@@ -304,6 +342,3 @@ if __name__ == "__main__":
 
     tcp_server_thread.join()
     udp_server_thread.join()
-
-
-

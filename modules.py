@@ -5,7 +5,7 @@ class TCPProtocolHandler:
   ROOM_NAME_MAX_BYTE_SIZE = 2**8 # room_nameの最大バイト数
   OPERATION_PAYLOAD_MAX_BYTE_SIZE = 2**29 # operation_payloadの最大バイト数
 
-  # リクエストデータの作成
+  # データの作成
   @staticmethod
   def make_tcp_data(room_name, operation, state, user_name="", auth_status=None, error_message="", operation_mode="", token="", room_list=None):
     # オペレーションペイロードの作成
@@ -51,7 +51,7 @@ class TCPProtocolHandler:
 
   # ルーム一覧レスポンスの作成
   @staticmethod
-  def make_room_list_response(room_list="", error_message=""):
+  def make_room_list_response(room_list, error_message=""):
     return TCPProtocolHandler.make_tcp_data(room_name="", operation=10, state=2, room_list=room_list, error_message=error_message)
 
   # ルーム作成依頼リクエストの作成
@@ -123,22 +123,27 @@ class UDPProtocolHandler:
     )
     return header + room_name_bytes + token_bytes + content_bytes
 
-  # チャットメッセージの作成
+  # チャットメッセージの作成(クライアント用)
   @staticmethod
   def make_chat_message(room_name, token, user_name, chat_data):
     return UDPProtocolHandler.make_udp_data(room_name=room_name, status="CHAT", token=token, user_name=user_name, chat_data=chat_data)
-
-  # 退出メッセージの作成
+  
+  # 退出メッセージの作成(クライアント用)
   @staticmethod
-  def make_leave_message():
-    return UDPProtocolHandler.make_udp_data(status="LEAVE")
+  def make_leave_message(room_name, token):
+    return UDPProtocolHandler.make_udp_data(status="LEAVE", room_name=room_name, token=token)
+  
+  # リレーするチャットメッセージの作成(クライアント用)
+  @staticmethod
+  def make_relay_message(user_name, chat_data):
+    return UDPProtocolHandler.make_udp_data(user_name=user_name, chat_data=chat_data, status="CHAT")
 
-  # クローズメッセージの作成
+  # クローズメッセージの作成(サーバー用)
   @staticmethod
   def make_close_message():
     return UDPProtocolHandler.make_udp_data(status="CLOSE", chat_data="ルームがクローズしました。")
   
-  # タイムアウトメッセージの作成
+  # タイムアウトメッセージの作成(サーバー用)
   @staticmethod
   def make_timeout_message():
     return UDPProtocolHandler.make_udp_data(status="TIMEOUT", chat_data="タイムアウトが発生しました。")
@@ -164,7 +169,7 @@ class UDPProtocolHandler:
       return {
         "room_name": room_name,
         "token": token,
-        "content": json.loads(content)
+        "content": content
       }
 
     except IndexError as e:

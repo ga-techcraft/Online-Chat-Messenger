@@ -37,17 +37,31 @@ class TCPClient:
       # *1つのリクエストに対して最初は認証のレスポンスが返ってきて、認証に成功したら取得したいデータが受信できる。
       self.sock.send(request_data)
 
+      print(f"{request_data}を送信しました。")
+
+      print("データの送信")
+
+
       # ①レスポンスデータ(認証)の受信と解析
       auth_response_data = self.sock.recv(4096)
+      print(f"auth_response{auth_response_data}を受信しました。")
       auth_response_data_parsed = TCPProtocolHandler.parse_data(auth_response_data)["operation_payload"]
+
+      print("データの受信")
       
       # 認証に失敗した場合、ここで処理を終える。
       if not auth_response_data_parsed["auth_status"]:
         return auth_response_data_parsed
       
+      print("認証成功")
+      
       # ②レスポンスデータ(トークン、またはルーム一覧)の受信と解析
       processed_response_data = self.sock.recv(4096)
       processed_response_data_parsed = TCPProtocolHandler.parse_data(processed_response_data)["operation_payload"]
+
+      print("データの作成完了")
+
+      print("hello")
       return processed_response_data_parsed
 
     except socket.error as e:
@@ -95,6 +109,8 @@ class UDPClient:
           # データの受信
           chat_data, _ = self.sock.recvfrom(4096)
 
+          print(f"{chat_data}を受信しました。")
+
           # データの解析
           parsed_message = UDPProtocolHandler.parse_message(chat_data)
           if parsed_message is None:
@@ -137,8 +153,9 @@ class ChatClient:
    # 役割：ユーザーからデータの取得、データに応じた処理
    # 戻り値：無し
    def start(self):
-      # TCPサーバーへ接続
-      self.tcp_client.connect()
+      if not self.tcp_client.connect():
+        print("TCPサーバーに接続できませんでした。終了します。")
+        return
       
       self.user_name = input("ユーザー名を入力してください: ")
 
@@ -198,7 +215,7 @@ class ChatClient:
         return
       
       try:
-        room_list = json.loads(operation_payload["room_list"])
+        room_list = operation_payload["room_list"]
       except json.JSONDecodeError as e:
          print(f"ルーム一覧のデコードに失敗しました。")
          return
@@ -209,14 +226,23 @@ class ChatClient:
 
       selected_room_name = input("参加したいルームを選択してください。")
 
+      print("まえ")
+
       # リクエストデータの作成
       request_data = TCPProtocolHandler.make_join_room_request(room_name=selected_room_name, user_name=self.user_name)
+
+      print(request_data)
+
+      print("なか")
 
       # ルームの参加依頼とトークンの取得
       operation_payload = self.tcp_client.send_request(request_data)
 
+
       if operation_payload is  None:
         return
+      
+      print("あと")
       
       # ルームとトークンの保存
       self.room_token = (selected_room_name, operation_payload["token"])
@@ -230,7 +256,8 @@ class ChatClient:
       print("ルームを退出します。")
 
       # 退出したことをサーバーに通知
-      message = UDPProtocolHandler.make_leave_message()
+      message = UDPProtocolHandler.make_leave_message(self.room_token[0], self.room_token[1])
+      print(message)
       self.udp_client.send_message(message)
 
       self.room_token = ()
@@ -285,8 +312,8 @@ class ChatClient:
 
 if __name__ == "__main__":
    server_ip = "127.0.0.1"
-   tcp_port = 9003
-   udp_port = 9004
+   tcp_port = 9022
+   udp_port = 9014
 
    tcp_client = TCPClient(server_ip, tcp_port)
    udp_client = UDPClient(server_ip, udp_port)
@@ -295,3 +322,8 @@ if __name__ == "__main__":
    
    chat_client.start()
 
+
+
+# chat開始時にサーバー側でアドレスの更新が必要だから、最初になにかしらの情報を入力させる。名前にしてもいいかも。つまり、名前はチャット参加時に都度決めれる。
+# join_roomの処理はそれぞれ別の関数にして、ユーザーの入力は全てstartで行うようにする
+# 名前でクライアントを区別して、更にチャット開始時に自動的にudpサーバー二メッセージを送信するようにしてポートを更新するのはどう？
