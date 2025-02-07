@@ -1,24 +1,35 @@
 import json
 
+# TCPデータ
+# {
+#   "operation": operation, 1:ルーム作成 2:ルーム参加
+#   "state": state, 0:サーバの初期化 1:リクエストの応答 2:リクエストの完了
+#   "room_name": room_name, 
+#   "operation_payload": {
+#     "error_message": error_message, 
+#     "type": type, "GET"=ルーム一覧の取得、"JOIN"=ルームの参加
+#     "token": token,
+#     "password": password,
+#     "room_list": room_list
+#   }
+# }
+
 # TCP通信時のデータの作成や解析を行う
 class TCPProtocolHandler:
   ROOM_NAME_MAX_BYTE_SIZE = 2**8 # room_nameの最大バイト数
   OPERATION_PAYLOAD_MAX_BYTE_SIZE = 2**29 # operation_payloadの最大バイト数
 
-  # データの作成
+  # データの作成。（ベースとなるメソッド）
   @staticmethod
-  def make_tcp_data(room_name, operation, state, user_name="", auth_status=None, error_message="", operation_mode="", token="", room_list=None):
+  def make_tcp_data(room_name, operation, state, error_message="", type="", token="", password="", room_list=None):
     # オペレーションペイロードの作成
     operation_payload = {
-        "user_name": user_name,
         "error_message": error_message,
-        "operation_mode": operation_mode,
+        "type": type,
         "token": token,
+        "password": password,
         "room_list": room_list if room_list is not None else []
     }
-
-    if auth_status is not None:
-        operation_payload["auth_status"] = auth_status
 
     # データのエンコード
     room_name_bytes = room_name.encode("utf-8")
@@ -41,8 +52,8 @@ class TCPProtocolHandler:
 
   # 認証レスポンスの作成
   @staticmethod
-  def make_auth_response(auth_status, error_message=""):
-    return TCPProtocolHandler.make_tcp_data(room_name="", operation=10, state=1, auth_status=auth_status, error_message=error_message)
+  def make_validate_response(error_message=""):
+    return TCPProtocolHandler.make_tcp_data(room_name="", operation=10, state=1, error_message=error_message)
 
   # トークンレスポンスの作成
   @staticmethod
@@ -56,18 +67,18 @@ class TCPProtocolHandler:
 
   # ルーム作成依頼リクエストの作成
   @staticmethod
-  def make_create_room_request(room_name, user_name, error_message=""):
-    return TCPProtocolHandler.make_tcp_data(room_name=room_name, operation=1, state=0, user_name=user_name, error_message=error_message)
+  def make_create_room_request(room_name, password):
+    return TCPProtocolHandler.make_tcp_data(room_name=room_name, password=password, operation=1, state=0)
 
   # ルーム一覧取得依頼リクエストの作成
   @staticmethod
-  def make_get_room_list_request(user_name):
-    return TCPProtocolHandler.make_tcp_data(room_name="", operation=2, state=0, user_name=user_name,operation_mode="GET")
+  def make_get_room_list_request():
+    return TCPProtocolHandler.make_tcp_data(room_name="", operation=2, state=0, type="GET")
 
   # ルーム参加依頼リクエストの作成
   @staticmethod
-  def make_join_room_request(room_name, user_name):
-    return TCPProtocolHandler.make_tcp_data(room_name=room_name, operation=2, state=0, user_name=user_name, operation_mode="JOIN")
+  def make_join_room_request(room_name, password):
+    return TCPProtocolHandler.make_tcp_data(room_name=room_name, password=password, operation=2, state=0, type="JOIN")
 
   # レスポンスデータの解析。戻り値はレスポンスデータ(dict)。
   @staticmethod
@@ -91,19 +102,31 @@ class TCPProtocolHandler:
     }
 
 
+# UDPデータ
+# {
+#   "room_name": room_name,
+#   "token": token,
+#   "content": {
+#     "type": type,
+#     "user_name": user_name,
+#     "chat_data": chat_data
+#   }
+# }
+
+
 # UDP通信時のデータの作成や解析を行う
 class UDPProtocolHandler:
   ROOM_NAME_MAX_BYTE_SIZE = 2**8 # room_nameの最大バイト数
   TOKEN_MAX_BYTE_SIZE = 2**8 # tokenの最大バイト数
 
-  # メッセージの作成
+  # メッセージの作成（ベースとなるメソッド）
   @staticmethod
-  def make_udp_data(status, room_name="", token="", user_name="", chat_data=""):
+  def make_udp_data(type, room_name="", token="", user_name="", chat_data=""):
     # データのエンコード
     room_name_bytes = room_name.encode("utf-8")
     token_bytes = token.encode("utf-8")
     content_bytes = json.dumps({
-      "status": status,
+      "type": type,
       "user_name": user_name,
       "chat_data": chat_data
     }).encode("utf-8")
@@ -122,31 +145,41 @@ class UDPProtocolHandler:
       len(token_bytes).to_bytes(1, "big") 
     )
     return header + room_name_bytes + token_bytes + content_bytes
+  
+  @staticmethod
+  # チャット開始時に自動的にサーバーに送信されるメッセージの作成(クライアント用)
+  def make_initial_message(room_name, token, user_name):
+    return UDPProtocolHandler.make_udp_data(room_name=room_name, type="INITIAL", token=token, user_name=user_name)
 
   # チャットメッセージの作成(クライアント用)
   @staticmethod
   def make_chat_message(room_name, token, user_name, chat_data):
-    return UDPProtocolHandler.make_udp_data(room_name=room_name, status="CHAT", token=token, user_name=user_name, chat_data=chat_data)
+    return UDPProtocolHandler.make_udp_data(room_name=room_name, type="CHAT", token=token, user_name=user_name, chat_data=chat_data)
   
   # 退出メッセージの作成(クライアント用)
   @staticmethod
   def make_leave_message(room_name, token):
-    return UDPProtocolHandler.make_udp_data(status="LEAVE", room_name=room_name, token=token)
+    return UDPProtocolHandler.make_udp_data(type="LEAVE", room_name=room_name, token=token)
   
   # リレーするチャットメッセージの作成(クライアント用)
   @staticmethod
   def make_relay_message(user_name, chat_data):
-    return UDPProtocolHandler.make_udp_data(user_name=user_name, chat_data=chat_data, status="CHAT")
+    return UDPProtocolHandler.make_udp_data(user_name=user_name, chat_data=chat_data, type="CHAT")
 
   # クローズメッセージの作成(サーバー用)
   @staticmethod
   def make_close_message():
-    return UDPProtocolHandler.make_udp_data(status="CLOSE", chat_data="ルームがクローズしました。")
+    return UDPProtocolHandler.make_udp_data(type="CLOSE", chat_data="ルームがクローズしました。")
   
   # タイムアウトメッセージの作成(サーバー用)
   @staticmethod
   def make_timeout_message():
-    return UDPProtocolHandler.make_udp_data(status="TIMEOUT", chat_data="タイムアウトが発生しました。")
+    return UDPProtocolHandler.make_udp_data(type="TIMEOUT", chat_data="タイムアウトが発生しました。")
+  
+  # システム停止メッセージの作成(サーバー用)
+  @staticmethod
+  def make_system_stop_message():
+    return UDPProtocolHandler.make_udp_data(type="STOP", chat_data="システムメンテナンス中です。")
     
   # メッセージの解析 
   @staticmethod
