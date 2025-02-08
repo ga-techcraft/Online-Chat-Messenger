@@ -114,21 +114,45 @@ class ChatClient:
   # 役割：ユーザーインターフェース
   # 戻り値：無し
   def play(self):
-    self.user_name = input("名前を入力してください。")
+
     try:
       while True:
-      
+        self.user_name = input("名前を入力してください。").strip()
+        if not self.user_name:
+          print("名前が入力されていません。")
+          continue
+        else:
+          break
+
+      while True:
         print("1: ルームを作成")
         print("2: ルームに参加")
 
-        choice = input("選択してください: ")
+        while True:
+          choice = input("選択してください: ").strip()
+          if not choice or (choice != "1" and choice != "2"):
+            print("1または2を選択してください。")
+          else:
+            break
 
         if not self.tcp_client.connect():
           return
         
         if choice == "1":
-            room_name = input("ルーム名を入力してください。")
-            password = input("パスワードを設定してください")
+            while True:
+              room_name = input("ルーム名を入力してください。").strip()
+              if not room_name:
+                print("ルーム名が入力されていません。")
+                continue
+              else:
+                break
+            while True:
+              password = input("パスワードを設定してください").strip()
+              if not password:
+                print("パスワードが入力されていません。")
+                continue
+              else:
+                break
             # ルーム作成依頼
             token, error_messaage = self.create_room_request(room_name, password)
             if error_messaage:
@@ -145,8 +169,23 @@ class ChatClient:
               continue
             for room_name in room_list:
               print(room_name)
-            selected_room_name = input("参加したいルームを選択してください。")
-            password = input("パスワードを入力してください。")
+            while True:
+              selected_room_name = input("参加したいルームを選択してください。").strip()
+              if not selected_room_name:
+                print("ルーム名を入力してください。")
+                continue
+              if selected_room_name not in room_list:
+                print("入力されたルームは存在しません。")
+                continue
+              else:
+                break
+            while True:
+              password = input("パスワードを入力してください。").strip()
+              if not password:
+                print("パスワードが入力されていません。")
+                continue
+              else:
+                break
 
             # ルーム参加依頼
             token, error_messaage = self.join_room_request(selected_room_name, password)
@@ -167,17 +206,20 @@ class ChatClient:
     finally:
       self.udp_client.close()
       self.tcp_client.disconnect()
+      print("システムを終了します。")
 
   # 役割：ルーム作成
   # 戻り値：成功=(トークン,None), 失敗=(None,エラーメッセージ)
   def create_room_request(self, room_name, password):
+    # リクエストの作成
     request = TCPProtocolHandler.make_create_room_request(room_name, password)
+    if not request:
+      return None, "ルーム名サイズの上限を超えています。"
     
+    # サーバーにルーム作成依頼
     response = self.tcp_client.send_request(request)
-
-    if response is None:
+    if not response:
       return None, "エラーが発生しました。"
-    
     if response["error_message"]:
       return None, response["error_message"]
     else:
@@ -187,12 +229,13 @@ class ChatClient:
   # 役割：ルーム一覧取得
   # 戻り値：成功=(ルーム一覧,None), 失敗=(None,エラーメッセージ)
   def get_room_list_request(self):
+    # リクエストの作成
     request = TCPProtocolHandler.make_get_room_list_request()
+    
+    # サーバーにルーム一覧取得依頼
     response = self.tcp_client.send_request(request)
-
     if response is None:
       return None, "エラーが発生しました。"
-
     if response["error_message"]:
       return None, response["error_message"]
     else:
@@ -201,12 +244,13 @@ class ChatClient:
   # 役割：ルーム参加
   # 戻り値：成功=(トークン,None)、失敗=(None,エラーメッセージ)
   def join_room_request(self, room_name, password):
+    # リクエストの作成
     request = TCPProtocolHandler.make_join_room_request(room_name, password)
-    response = self.tcp_client.send_request(request)
 
+    # サーバーにルーム参加依頼
+    response = self.tcp_client.send_request(request)
     if response is None:
       return None, "エラーが発生しました。"
-
     if response["error_message"]:
       return None, response["error_message"]
     else:
@@ -231,6 +275,9 @@ class ChatClient:
       while not is_chat_active.is_set():
         # メッセージの入力
         data = input("")
+        if not data:
+          continue
+        # メッセージの作成
         message = UDPProtocolHandler.make_chat_message(self.room_token[0], self.room_token[1], self.user_name, data)
         # メッセージの送信
         self.udp_client.send_message(message)

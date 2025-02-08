@@ -37,7 +37,9 @@ class TCPProtocolHandler:
 
     # データサイズのチェック
     if len(room_name_bytes) > TCPProtocolHandler.ROOM_NAME_MAX_BYTE_SIZE:
-      print("ルーム名が最大バイトサイズを超えています。")
+      return None
+    
+    if len(operation_payload_bytes) > TCPProtocolHandler.OPERATION_PAYLOAD_MAX_BYTE_SIZE:
       return None
     
     # データの作成
