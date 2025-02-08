@@ -22,15 +22,15 @@
 ### TCPデータフォーマット
 ```json
 {
-  "operation": <operation>,       // 1: ルーム作成, 2: ルーム参加
-  "state": <state>,               // 0: サーバの初期化, 1: リクエストの応答, 2: リクエストの完了
-  "room_name": <room_name>,       // ルーム名
+  "operation": "1",                              // 1: ルーム作成, 2: ルーム参加
+  "state": "0",                                  // 0: サーバの初期化, 1: リクエストの応答, 2: リクエストの完了
+  "room_name": "roomA",                          // ルーム名
   "operation_payload": {
-    "error_message": <error>,     // エラーメッセージ（空の場合は正常）
-    "type": <type>,               // "GET": ルーム一覧の取得, "JOIN": ルームの参加
-    "token": <token>,             // クライアント用のトークン
-    "password": <password>,       // ルームのパスワード
-    "room_list": <room_list>      // ルーム一覧
+    "error_message": "error_message",               // エラーメッセージ（空の場合は正常）
+    "type": "GET",                               // "GET": ルーム一覧の取得, "JOIN": ルームの参加
+    "token": "token123",                         // クライアント用のトークン
+    "password": "password123",                   // ルームのパスワード
+    "room_list": "['roomA', 'roomB', 'roomC']"  // ルーム一覧
   }
 }
 ```
@@ -38,17 +38,17 @@
 ### UDPデータフォーマット
 ```json
 {
-  "room_name": <room_name>,      // ルーム名
-  "token": <token>,              // クライアント用のトークン
+  "room_name": "roomA",      // ルーム名
+  "token": "token123",              // クライアント用のトークン
   "content": {
-    "type": <type>,              // "INITIAL": チャット開始, "CHAT": 通常のチャット, "LEAVE": 退出, "CLOSE": ルームのクローズ
-    "user_name": <user_name>,    // ユーザー名
-    "chat_data": <chat_message>  // チャットメッセージ
+    "type": "INITIAL",              // "INITIAL": チャット開始, "CHAT": 通常のチャット, "LEAVE": 退出, "CLOSE": ルームのクローズ
+    "user_name": "user1",    // ユーザー名
+    "chat_data": "error_message"  // チャットメッセージ
   }
 }
 ```
 
-## クラスの構成と連携
+## クラスの構成
 
 ### 1. `TCPProtocolHandler`
 - TCP通信で使用するデータの作成と解析を行います。
@@ -79,18 +79,19 @@
 ### 5. `ChatClient`
 - ユーザーインターフェースを提供し、ルームの作成、参加、チャット開始などの操作を処理します。
 - **主な機能**:
-  - ルーム作成 (`create_room_request`)
-  - ルーム一覧取得 (`get_room_list_request`)
-  - ルーム参加 (`join_room_request`)
+  - ユーザーインターフェース（`play`）
+  - ルームの作成処理 (`create_room_request`)
+  - ルーム一覧の取得処理 (`get_room_list_request`)
+  - ルームへの参加処理 (`join_room_request`)
   - チャットインターフェース (`start_chat`)
 
 ### 6. `ChatServer`
 - すべてのルームやクライアント情報の管理、リクエストの処理を行います。
 - **主な機能**:
   - ルームの作成 (`create_room`)
-  - ルームへの参加 (`join_room`)
   - ルーム一覧の取得 (`get_room_list`)
-  - 非アクティブクライアントの検出と削除 (`detect_unactive_address_list`)
+  - ルームへの参加 (`join_room`)
+  - 非アクティブクライアントの検出 (`detect_unactive_address_list`)
 
 ### 7. `TCPServer`
 - TCP通信を介してクライアントからのリクエストを受け取り、適切な処理を実行します。
@@ -106,19 +107,19 @@
   - 非アクティブクライアントの削除 (`handle_unactive_client`)
 
 ## システムの流れ
+1. **クライアント側**
+    - `ChatClient`でユーザーの要求を受信
+    - `TCP/UDPProtocolHandler`で送信データの作成
+    - `TCP/UDPClient`でデータの送信と受信
+    - `TCP/UDPProtocolHandler`で受信データの解析
+    - `ChatClient`でユーザーにデータ表示
 
-1. **クライアントの接続**
-    - ユーザーはクライアントプログラムを実行し、TCP通信でサーバーに接続します。
-
-2. **ルーム作成 or ルーム参加**
-    - クライアントがTCP通信を介してルーム作成リクエストまたはルーム一覧取得リクエストをサーバーに送信。
-    - サーバー側でルーム情報を管理し、適切なトークンやエラーメッセージを返します。
-
-3. **チャット開始**
-    - クライアントがチャットを開始すると、UDP通信を介してサーバーにメッセージを送信し、他のクライアントにリレーされます。
-
-4. **非アクティブなクライアントの検出とクリーンアップ**
-    - サーバーは定期的に非アクティブなクライアントを検出し、タイムアウトメッセージを送信した後、情報をクリーンアップします。
+2. **サーバー側**
+    - `TCP/UDPServer`でデータ受信
+    - `TCP/UDPProtocolHandler`でデータ解析
+    - 解析結果を基に`ChatServer`でデータ処理
+    - 処理結果を基に`TCP/UDPProtocolHandler`でデータ作成
+    - `TCP/UDPServer`でデータ送信
 
 ## 実行方法
 
@@ -134,7 +135,3 @@
    python3 client.py
    ```
 2. ユーザーインターフェースに従って操作を行います。
-
-## 注意事項
-- サーバーとクライアントは同一のネットワーク上で動作する必要があります。
-- プロジェクト内の構成が変わる場合、適切にデータ構造やプロトコルを更新してください。
