@@ -26,11 +26,11 @@
   "state": "0",                                  // 0: サーバの初期化, 1: リクエストの応答, 2: リクエストの完了
   "room_name": "roomA",                          // ルーム名
   "operation_payload": {
-    "error_message": "error_message",               // エラーメッセージ（空の場合は正常）
+    "error_message": "error_message",            // エラーメッセージ（空の場合は正常）
     "type": "GET",                               // "GET": ルーム一覧の取得, "JOIN": ルームの参加
     "token": "token123",                         // クライアント用のトークン
     "password": "password123",                   // ルームのパスワード
-    "room_list": "['roomA', 'roomB', 'roomC']"  // ルーム一覧
+    "room_list": "['roomA', 'roomB', 'roomC']"   // ルーム一覧
   }
 }
 ```
@@ -38,12 +38,12 @@
 ### UDPデータフォーマット
 ```json
 {
-  "room_name": "roomA",      // ルーム名
-  "token": "token123",              // クライアント用のトークン
+  "room_name": "roomA",            // ルーム名
+  "token": "token123",             // クライアント用のトークン
   "content": {
-    "type": "INITIAL",              // "INITIAL": チャット開始, "CHAT": 通常のチャット, "LEAVE": 退出, "CLOSE": ルームのクローズ
-    "user_name": "user1",    // ユーザー名
-    "chat_data": "error_message"  // チャットメッセージ
+    "type": "INITIAL",             // "INITIAL": チャット開始, "CHAT": 通常のチャット, "LEAVE": 退出, "CLOSE": ルームのクローズ
+    "user_name": "user1",          // ユーザー名
+    "chat_data": "error_message"   // チャットメッセージ
   }
 }
 ```
