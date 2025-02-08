@@ -22,7 +22,226 @@ import base64
 #    }
 # }
 
-# チャットサーバー
+# ★クラス毎の役割と連携イメージ
+# 【役割】
+# TCPProtocolHandler:TCPデータの作成、パース
+# UDPProtocolHandler:UDPデータの作成、パース
+# ChatServer:全てのルームやクライアント情報の管理
+# TCPServer:TCP通信でのデータの送受信
+# UDPServer:UDP通信でのデータの送受信
+# 【連携】
+# TCP/UDPServerでデータ受信→TCP/UDPProtocolHandlerでデータ解析→解析結果を基にChatServerでデータ処理→処理結果を基にTCP/UDPProtocolHandlerでデータ作成→TCP/UDPServerでデータ送信
+
+# TCP通信でのデータの送受信
+class TCPServer:
+   def __init__(self, server_ip, tcp_port, chat_server):
+      self.server_address = (server_ip, tcp_port)
+      self.chat_server = chat_server
+
+   # 役割：クライアントからの接続の受信
+   # 戻り値：無し
+   def run(self):
+      try:
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(self.server_address)
+        self.sock.settimeout(3)
+        self.sock.listen(5)
+        print(f"TCPサーバー起動: {self.server_address}")
+
+        while not is_system_active.is_set():
+            try:
+               connection, client_address = self.sock.accept()
+               print(f"TCP接続受信: {client_address}")
+            except socket.timeout as e:
+               continue
+
+            handle_request = threading.Thread(target=self.handle_request, args=(connection, client_address), daemon=True)
+            handle_request.start()
+
+      except KeyboardInterrupt as e:
+         print(e)
+      finally:
+          self.sock.close()
+          print("TCP 接続を閉じました。")
+
+   # 役割：クライアントからのリクエストの処理
+   # 戻り値：無し
+   def handle_request(self, connection, client_address):
+      try:
+         while True:
+            # リクエストの取得
+            request = connection.recv(4096)
+   
+            if not request:
+               print(f"{client_address}との接続を終了します。")
+               break
+
+            # リクエストの解析
+            parsed_request = TCPProtocolHandler.parse_data(request)
+            # リクエストのバリデーション。エラーが無ければ空文字が返ってくる
+            error_message = self.chat_server.validate_request(parsed_request)
+            # バリデートレスポンスの作成
+            response = TCPProtocolHandler.make_validate_response(error_message)
+            # バリデートレスポンスの送信
+            connection.send(response)
+
+            # バリデートに失敗している場合は処理を終える
+            if error_message:
+               return
+            
+            # リクエストの処理
+            operation = parsed_request["operation"]
+            operation_payload = parsed_request["operation_payload"]
+            type = operation_payload["type"]
+
+            if operation == 1:
+               # ルームの作成。成功すればトークンが返ってくる。
+               token, error_message = self.chat_server.create_room(parsed_request, client_address)
+               # レスポンスの作成
+               response = TCPProtocolHandler.make_token_response(token, error_message)
+
+            elif operation == 2 and type == "GET":
+               # ルーム一覧の作成。成功すれば一覧がリストで返ってくる。
+               room_list, error_message = self.chat_server.get_room_list()
+               # レスポンスの作成
+               response = TCPProtocolHandler.make_room_list_response(room_list, error_message)
+
+            elif operation == 2 and type == "JOIN":
+               # ルームへ追加。成功すればトークンが返ってくる。
+               token, error_message = self.chat_server.join_room(parsed_request, client_address)
+               # レスポンスの作成
+               response = TCPProtocolHandler.make_token_response(token, error_message)
+
+            # レスポンスの送信(共通のため最後処理する)
+            connection.send(response)
+      except OSError as e:
+         print(e)
+      except KeyboardInterrupt as e:
+         print(e)
+      finally:
+         connection.close()
+
+# UDP通信でのデータの送受信
+class UDPServer:
+   def __init__(self, server_ip, udp_port, chat_server):
+      self.server_address = (server_ip, udp_port)
+      self.chat_server = chat_server
+   
+   # 役割：クライアントからのメッセージの受信
+   # 戻り値：無し
+   def run(self):
+      try:
+          self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+          self.sock.bind(self.server_address)
+          self.sock.settimeout(3)
+          threading.Thread(target=self.handle_unactive_client, daemon=True).start()
+
+          print(f"UDPサーバー起動: {self.server_address}")
+
+          while not is_system_active.is_set():
+            try:
+               message, client_address = self.sock.recvfrom(4096)
+               self.handle_message(message, client_address)
+            except socket.timeout as e:
+               continue
+
+      except KeyboardInterrupt as e:
+         print(e)
+      except Exception as e:
+          print(e)
+      finally:
+          self.sock.close()
+          print("UDP 接続を閉じました。")
+
+   # 役割：メッセージの処理
+   # 戻り値：無し
+   def handle_message(self, message, client_address):
+      try:
+         parsed_message = UDPProtocolHandler.parse_message(message)
+         content = parsed_message["content"]
+         print(f"{parsed_message}を受信しました。")
+         
+         # 通常のチャット時
+         if content["type"] == "CHAT":
+            # 最終接続時刻の更新
+            self.chat_server.update_last_access(parsed_message)
+            # メッセージのバリデーション
+            is_valid = self.chat_server.validate_message(parsed_message, client_address)
+            if not is_valid:
+               return
+            # メッセージの作成
+            message = UDPProtocolHandler.make_relay_message(content["user_name"], content["chat_data"])
+            # アドレスリストの取得
+            address_list = self.chat_server.get_address_list(parsed_message)
+            if address_list is None:
+               return
+            # メッセージのリレー
+            for address in address_list:
+               if address != client_address:
+                  self.sock.sendto(message, address)
+                  # print(f"{message}を{address}に送信しました。")
+         
+         # チャット退出時
+         elif content["type"] == "LEAVE":
+            # メッセージのバリデーション
+            is_valid = self.chat_server.validate_message(parsed_message, client_address)
+            if not is_valid:
+               return
+            # print(f"{client_address}が退出しました。")
+            # ホストかどうか確認
+            is_host = self.chat_server.is_host(parsed_message["token"])
+            if is_host:
+               # ルームメンバー(ゲスト全員)の情報の取得
+               members_list = self.chat_server.get_members_list(parsed_message["room_name"])
+               # ルームメンバーへクローズメッセージの送信
+               # ルームメンバー情報の削除
+               message = UDPProtocolHandler.make_close_message()
+               for token, address in members_list:
+                  self.chat_server.delete_client(token)
+                  self.sock.sendto(message, address)
+            else:
+               # 退出者情報のみ削除
+               self.chat_server.delete_client(parsed_message["token"])
+            
+         # チャット開始時
+         elif content["type"] == "INITIAL":
+            self.chat_server.initial(parsed_message, client_address)
+      except Exception as e:
+         print(e)
+
+   # 役割：非アクティブクライアントの削除
+   # 戻り値：無し
+   def handle_unactive_client(self):
+      while True:
+         time.sleep(5)
+
+         # 非アクティブクライアントのリストを取得。(token, address)のリスト。
+         unactive_members_list = self.chat_server.detect_unactive_address_list()
+         # タイムアウトメッセージの作成
+         time_out_message = UDPProtocolHandler.make_timeout_message()
+         # 非アクティブクライアントがホストだった場合に取得するゲストリストの変数
+         guests_members_list = []
+
+         for token, address in unactive_members_list:
+            is_host = self.chat_server.is_host(token)
+            if is_host:
+               # ホストだったらゲスト情報を取得。(token, address)のリスト
+               room_name = self.chat_server.get_client_room_name(token)
+               guests_members_list.extend(self.chat_server.get_members_list(room_name))
+            # 非アクティブクライアントを削除しメッセージを送信
+            self.chat_server.delete_client(token)
+            self.sock.sendto(time_out_message, address)
+
+         # アクティブなゲストリスト情報を取得。
+         active_members_list = list(set(guests_members_list) - set(unactive_members_list))
+         # クローズメッセージの作成
+         close_message = UDPProtocolHandler.make_close_message()
+         # アクティブなゲストを削除しメッセージを送信
+         for token, address in active_members_list:
+            self.chat_server.delete_client(token)
+            self.sock.sendto(close_message, address)
+
+# 全てのルームやクライアント情報の管理
 class ChatServer:
    def __init__(self):
       self.rooms_info = {}
@@ -186,215 +405,6 @@ class ChatServer:
             del self.rooms_info[room_name]
 
 
-# TCPサーバー
-class TCPServer:
-   def __init__(self, server_ip, tcp_port, chat_server):
-      self.server_address = (server_ip, tcp_port)
-      self.chat_server = chat_server
-
-   # 役割：クライアントからの接続の受信
-   # 戻り値：無し
-   def run(self):
-      try:
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.bind(self.server_address)
-        self.sock.settimeout(3)
-        self.sock.listen(5)
-        print(f"TCPサーバー起動: {self.server_address}")
-
-        while not is_system_active.is_set():
-            try:
-               connection, client_address = self.sock.accept()
-               print(f"TCP接続受信: {client_address}")
-            except socket.timeout as e:
-               continue
-
-            handle_request = threading.Thread(target=self.handle_request, args=(connection, client_address), daemon=True)
-            handle_request.start()
-
-      except KeyboardInterrupt as e:
-         print(e)
-      finally:
-          self.sock.close()
-          print("TCP 接続を閉じました。")
-
-   # 役割：クライアントからのリクエストの処理
-   # 戻り値：無し
-   def handle_request(self, connection, client_address):
-      try:
-         while True:
-            # リクエストの取得
-            request = connection.recv(4096)
-   
-            if not request:
-               print(f"{client_address}との接続を終了します。")
-               break
-
-            # リクエストの解析
-            parsed_request = TCPProtocolHandler.parse_data(request)
-            # リクエストのバリデーション。エラーが無ければ空文字が返ってくる
-            error_message = self.chat_server.validate_request(parsed_request)
-            # バリデートレスポンスの作成
-            response = TCPProtocolHandler.make_validate_response(error_message)
-            # バリデートレスポンスの送信
-            connection.send(response)
-
-            # バリデートに失敗している場合は処理を終える
-            if error_message:
-               return
-            
-            # リクエストの処理
-            operation = parsed_request["operation"]
-            operation_payload = parsed_request["operation_payload"]
-            type = operation_payload["type"]
-
-            if operation == 1:
-               # ルームの作成。成功すればトークンが返ってくる。
-               token, error_message = self.chat_server.create_room(parsed_request, client_address)
-               # レスポンスの作成
-               response = TCPProtocolHandler.make_token_response(token, error_message)
-
-            elif operation == 2 and type == "GET":
-               # ルーム一覧の作成。成功すれば一覧がリストで返ってくる。
-               room_list, error_message = self.chat_server.get_room_list()
-               # レスポンスの作成
-               response = TCPProtocolHandler.make_room_list_response(room_list, error_message)
-
-            elif operation == 2 and type == "JOIN":
-               # ルームへ追加。成功すればトークンが返ってくる。
-               token, error_message = self.chat_server.join_room(parsed_request, client_address)
-               # レスポンスの作成
-               response = TCPProtocolHandler.make_token_response(token, error_message)
-
-            # レスポンスの送信(共通のため最後処理する)
-            connection.send(response)
-      except OSError as e:
-         print(e)
-      except KeyboardInterrupt as e:
-         print(e)
-      finally:
-         connection.close()
-
-
-# UDPサーバー
-class UDPServer:
-   def __init__(self, server_ip, udp_port, chat_server):
-      self.server_address = (server_ip, udp_port)
-      self.chat_server = chat_server
-   
-   # 役割：クライアントからのメッセージの受信
-   # 戻り値：無し
-   def run(self):
-      try:
-          self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-          self.sock.bind(self.server_address)
-          self.sock.settimeout(3)
-          threading.Thread(target=self.handle_unactive_client, daemon=True).start()
-
-          print(f"UDPサーバー起動: {self.server_address}")
-
-          while not is_system_active.is_set():
-            try:
-               message, client_address = self.sock.recvfrom(4096)
-               self.handle_message(message, client_address)
-            except socket.timeout as e:
-               continue
-
-      except KeyboardInterrupt as e:
-         print(e)
-      except Exception as e:
-          print(e)
-      finally:
-          self.sock.close()
-          print("UDP 接続を閉じました。")
-
-   # 役割：メッセージの処理
-   # 戻り値：無し
-   def handle_message(self, message, client_address):
-      try:
-         parsed_message = UDPProtocolHandler.parse_message(message)
-         content = parsed_message["content"]
-         print(f"{parsed_message}を受信しました。")
-         
-         # 通常のチャット時
-         if content["type"] == "CHAT":
-            # 最終接続時刻の更新
-            self.chat_server.update_last_access(parsed_message)
-            # メッセージのバリデーション
-            is_valid = self.chat_server.validate_message(parsed_message, client_address)
-            if not is_valid:
-               return
-            # メッセージの作成
-            message = UDPProtocolHandler.make_relay_message(content["user_name"], content["chat_data"])
-            # アドレスリストの取得
-            address_list = self.chat_server.get_address_list(parsed_message)
-            if address_list is None:
-               return
-            # メッセージのリレー
-            for address in address_list:
-               if address != client_address:
-                  self.sock.sendto(message, address)
-                  # print(f"{message}を{address}に送信しました。")
-         
-         # チャット退出時
-         elif content["type"] == "LEAVE":
-            # メッセージのバリデーション
-            is_valid = self.chat_server.validate_message(parsed_message, client_address)
-            if not is_valid:
-               return
-            # print(f"{client_address}が退出しました。")
-            # ホストかどうか確認
-            is_host = self.chat_server.is_host(parsed_message["token"])
-            if is_host:
-               # ルームメンバー(ゲスト全員)の情報の取得
-               members_list = self.chat_server.get_members_list(parsed_message["room_name"])
-               # ルームメンバーへクローズメッセージの送信
-               # ルームメンバー情報の削除
-               message = UDPProtocolHandler.make_close_message()
-               for token, address in members_list:
-                  self.chat_server.delete_client(token)
-                  self.sock.sendto(message, address)
-            else:
-               # 退出者情報のみ削除
-               self.chat_server.delete_client(parsed_message["token"])
-            
-         # チャット開始時
-         elif content["type"] == "INITIAL":
-            self.chat_server.initial(parsed_message, client_address)
-      except Exception as e:
-         print(e)
-
-   # 役割：非アクティブクライアントの削除
-   # 戻り値：無し
-   def handle_unactive_client(self):
-      while True:
-         time.sleep(5)
-
-         # 非アクティブクライアントのリストを取得。(token, address)のリスト。
-         unactive_members_list = self.chat_server.detect_unactive_address_list()
-         # タイムアウトメッセージの作成
-         time_out_message = UDPProtocolHandler.make_timeout_message()
-         # 非アクティブクライアントがホストだった場合に取得するゲストリストの変数
-         guests_members_list = []
-
-         for token, address in unactive_members_list:
-            is_host = self.chat_server.is_host(token)
-            if is_host:
-               # ホストだったらゲスト情報を取得。(token, address)のリスト
-               room_name = self.chat_server.get_client_room_name(token)
-               guests_members_list.extend(self.chat_server.get_members_list(room_name))
-            # 非アクティブクライアントを削除しメッセージを送信
-            self.chat_server.delete_client(token)
-            self.sock.sendto(time_out_message, address)
-
-         # アクティブなゲストリスト情報を取得。
-         active_members_list = list(set(guests_members_list) - set(unactive_members_list))
-         # クローズメッセージの作成
-         close_message = UDPProtocolHandler.make_close_message()
-         # アクティブなゲストを削除しメッセージを送信
-         for token, address in active_members_list:
-            self.chat_server.delete_client(token)
-            self.sock.sendto(close_message, address)
 
 if __name__ == "__main__":
    lock = threading.Lock()

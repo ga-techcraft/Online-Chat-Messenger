@@ -2,6 +2,17 @@ import socket
 import threading
 from modules import TCPProtocolHandler,UDPProtocolHandler
 
+# ★クラス毎の役割と連携
+# 【役割】
+# TCPProtocolHandler:TCPデータの作成、パース
+# UDPProtocolHandler:UDPデータの作成、パース
+# ChatClient:ユーザーインターフェースを提供し、ルームの作成、参加、チャット開始などの操作を処理
+# TCPClient:TCP通信でのデータの送受信
+# UDPClient:UDP通信でのデータの送受信
+# 【連携】
+# ChatClientでユーザーの要求を受信→TCP/UDPProtocolHandlerで送信データの作成→TCP/UDPClientでデータの送信と受信→TCP/UDPProtocolHandlerで受信データの解析→ChatClientでユーザーにデータ表示
+
+# TCP通信でのデータの送受信
 class TCPClient:
   def __init__(self, server_ip, tcp_port):
     self.server_address = (server_ip, tcp_port)
@@ -52,7 +63,7 @@ class TCPClient:
     self.sock = None
     print("TCP接続を終了しました。")
 
-
+# UDP通信でのデータの送受信
 class UDPClient:
   def __init__(self, server_ip, udp_port):
     self.server_address = (server_ip, udp_port)
@@ -103,7 +114,7 @@ class UDPClient:
   def close(self):
     self.sock.close()
 
-
+# ユーザーインターフェースを提供し、ルームの作成、参加、チャット開始などの操作を処理。
 class ChatClient:
   def __init__(self, tcp_client, udp_client):
     self.tcp_client = tcp_client

@@ -13,8 +13,7 @@ import json
 #     "room_list": room_list
 #   }
 # }
-
-# TCP通信時のデータの作成や解析を行う
+# TCPデータの作成、パース
 class TCPProtocolHandler:
   ROOM_NAME_MAX_BYTE_SIZE = 2**8 # room_nameの最大バイト数
   OPERATION_PAYLOAD_MAX_BYTE_SIZE = 2**29 # operation_payloadの最大バイト数
@@ -114,9 +113,7 @@ class TCPProtocolHandler:
 #     "chat_data": chat_data
 #   }
 # }
-
-
-# UDP通信時のデータの作成や解析を行う
+# UDPデータの作成、パース
 class UDPProtocolHandler:
   ROOM_NAME_MAX_BYTE_SIZE = 2**8 # room_nameの最大バイト数
   TOKEN_MAX_BYTE_SIZE = 2**8 # tokenの最大バイト数
