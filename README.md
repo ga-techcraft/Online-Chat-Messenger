@@ -108,20 +108,46 @@
 
 ## システムの流れ
 1. **クライアント側**
-    - `ChatClient`でユーザーの要求を受信
-    - `TCP/UDPProtocolHandler`で送信データの作成
-    - `TCP/UDPClient`でデータの送信と受信
-    - `TCP/UDPProtocolHandler`で受信データの解析
-    - `ChatClient`でユーザーにデータ表示
+- `ChatClient`でユーザーの要求を受信
+- `TCP/UDPProtocolHandler`で送信データの作成
+- `TCP/UDPClient`でデータの送信と受信
+- `TCP/UDPProtocolHandler`で受信データの解析
+- `ChatClient`でユーザーにデータ表示
 
 2. **サーバー側**
-    - `TCP/UDPServer`でデータ受信
-    - `TCP/UDPProtocolHandler`でデータ解析
-    - 解析結果を基に`ChatServer`でデータ処理
-    - 処理結果を基に`TCP/UDPProtocolHandler`でデータ作成
-    - `TCP/UDPServer`でデータ送信
+- `TCP/UDPServer`でデータ受信
+- `TCP/UDPProtocolHandler`でデータ解析
+- 解析結果を基に`ChatServer`でデータ処理
+- 処理結果を基に`TCP/UDPProtocolHandler`でデータ作成
+- `TCP/UDPServer`でデータ送信
 
+## タイムアウト、退出、システム終了の詳細
+1. **タイムアウト**
+- 各クライアントの最終アクセス時刻を監視し、一定時間（デフォルト15秒）を過ぎたら自動的に退出させます。
+2. **退出**
+- ルーム情報から削除されます。ルームに再度入出する場合は再度パスワードの入力が必要です。
+- ホストが退出した場合は、ゲスト全員を自動的に退出させます。
+3. **サーバー停止**
+- チャットに参加しているクライアント全員を自動的に退出させます。
 ## 実行方法
+
+### システム要件
+- OS: Linux（Ubuntu推奨）
+- Python: 3.8異常
+- パッケージ管理: apt
+
+### パッケージ、ライブラリのインストール
+1. 必要なOSパッケージをインストールします。
+    ```bash
+    sudo apt update
+    sudo apt install python3-venv
+2. 仮想環境を生成します。
+    ```bash
+    python3 -m venv my_env
+    source my_env/bin/activate
+3. 必要なライブラリをインストールします。
+    ```bash
+    pip install -r requirements.txt
 
 ### サーバーの起動
 1. サーバーのスクリプトを実行します。

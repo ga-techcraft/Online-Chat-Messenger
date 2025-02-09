@@ -199,7 +199,7 @@ class UDPServer:
       try:
          parsed_message = UDPProtocolHandler.parse_message(message)
          content = parsed_message["content"]
-         print(f"{content["user_name"]}から{content["type"]}:{content["chat_data"]}を受信しました。")
+         print(f"{content['user_name']}から{content['type']}:{content['chat_data']}を受信しました。")
          
          # 通常のチャット時
          if content["type"] == "CHAT":
