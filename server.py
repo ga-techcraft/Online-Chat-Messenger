@@ -142,6 +142,8 @@ class TCPServer:
          recieved_header_data = b""
          while len(recieved_header_data) < 32:
             chunk = connection.recv(32 - len(recieved_header_data))
+            if not chunk:
+               return ""
             recieved_header_data += chunk
 
          room_name_size = recieved_header_data[0]
