@@ -1,4 +1,5 @@
 import json
+import bcrypt
 
 # TCPデータ
 # {
@@ -13,6 +14,24 @@ import json
 #     "room_list": room_list
 #   }
 # }
+
+class CryptoHandler:
+  @staticmethod
+  def encrypt_password(password):
+    encoded_password = password.encode("utf-8")
+    salt = bcrypt.gensalt()
+    hashed_password = bcrypt.hashpw(encoded_password, salt)
+    return hashed_password
+
+  @staticmethod
+  def verify_password(password, hashed_password):
+    encoded_password = password.encode("utf-8")
+    encoded_hashed_password = hashed_password.encode("utf-8")
+    if bcrypt.checkpw(encoded_password, encoded_hashed_password):
+      return True
+    else:
+      return False
+
 # TCPデータの作成、パース
 class TCPProtocolHandler:
   ROOM_NAME_MAX_BYTE_SIZE = 2**8 # room_nameの最大バイト数
@@ -69,7 +88,8 @@ class TCPProtocolHandler:
   # ルーム作成依頼リクエストの作成
   @staticmethod
   def make_create_room_request(room_name, password):
-    return TCPProtocolHandler.make_tcp_data(room_name=room_name, password=password, operation=1, state=0)
+    hashed_password = CryptoHandler.encrypt_password(password).decode("utf-8")
+    return TCPProtocolHandler.make_tcp_data(room_name=room_name, password=hashed_password, operation=1, state=0)
 
   # ルーム一覧取得依頼リクエストの作成
   @staticmethod

@@ -305,8 +305,8 @@ if __name__ == "__main__":
   is_chat_active = threading.Event()
 
   server_ip = "127.0.0.1"
-  tcp_port = 6051
-  udp_port = 7011
+  tcp_port = 6052
+  udp_port = 7012
   tcp_client = TCPClient(server_ip, tcp_port)
   upd_client = UDPClient(server_ip, udp_port)
 

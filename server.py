@@ -1,6 +1,6 @@
 import socket
 import threading
-from modules import TCPProtocolHandler,UDPProtocolHandler
+from modules import TCPProtocolHandler,UDPProtocolHandler,CryptoHandler
 import time
 import datetime
 import secrets
@@ -257,7 +257,8 @@ class ChatServer:
       password = parsed_request["operation_payload"]["password"]
 
       if operation == 2 and type == "JOIN":
-         if self.rooms_info[room_name]["password"] != password:
+         is_valid = CryptoHandler.verify_password(password, self.rooms_info[room_name]["password"])
+         if not is_valid:
             return "パスワードに誤りがあります。"
       
       return None
@@ -411,8 +412,8 @@ if __name__ == "__main__":
    is_system_active = threading.Event()
 
    server_ip = "0.0.0.0"
-   tcp_port = 6051
-   udp_port = 7011
+   tcp_port = 6052
+   udp_port = 7012
   
    try:
       chat_server = ChatServer()
