@@ -123,6 +123,7 @@ class TCPProtocolHandler:
     }
 
 
+
 # UDPデータ
 # {
 #   "room_name": room_name,
@@ -198,7 +199,7 @@ class UDPProtocolHandler:
   # システム停止メッセージの作成(サーバー用)
   @staticmethod
   def make_system_stop_message():
-    return UDPProtocolHandler.make_udp_data(type="STOP", chat_data="システムメンテナンス中です。")
+    return UDPProtocolHandler.make_udp_data(type="STOP", chat_data="システムメンテナンス中のためシステムが終了しました。")
     
   # メッセージの解析 
   @staticmethod
