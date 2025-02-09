@@ -33,52 +33,49 @@ class TCPClient:
     except socket.error as e:
       return False
     
-  # def recieve_response(self):
+  # 役割：サーバーからのレスポンスを取得
+  # 戻り値：レスポンスデータ
+  def recieve_response(self):
+      try:
+        recieved_header_data = b""
+        while len(recieved_header_data) < 32:
+          chunk = self.sock.recv(32 - len(recieved_header_data))
+          recieved_header_data += chunk
 
-  #   pass
+        room_name_size = recieved_header_data[0]
+        operation_payload_size = int.from_bytes(recieved_header_data[3:], "big")
+        total_body_size = room_name_size + operation_payload_size
+        
+        recieved_body_data = b""
+        while len(recieved_body_data) < total_body_size:
+          chunk = self.sock.recv(total_body_size - len(recieved_body_data))
+          recieved_body_data += chunk
+        
+        response = recieved_header_data + recieved_body_data
+        return response
+      except socket.timeout as e:
+        print(e)
+      except socket.error as e:
+        print(e)
     
   # 役割：サーバーへリクエストを送信
   # 戻り値：レスポンスデータ
   def send_request(self, request):
     try:
-      self.sock.send(request)
+      self.sock.sendall(request)
 
-      # response = self.sock.recv(4096)
-
-      header = self.sock.recv(32)
-      room_name_size = header[0]
-      # operation = header[1]
-      # state = header[2]
-      operation_payload_size = int.from_bytes(header[3:], "big")
-      total_body_size = room_name_size + operation_payload_size
-      
-      recieved_body_data = b""
-      while len(recieved_body_data) < total_body_size:
-        chunk = self.sock.recv(total_body_size - len(recieved_body_data))
-        recieved_body_data += chunk
-      
-      response = header + recieved_body_data
-
-
+      response = self.recieve_response()
       parsed_response = TCPProtocolHandler.parse_data(response)["operation_payload"]
-      print("バリデーションレスポンスを受信しました。")
-
       if parsed_response["error_message"]:
         return parsed_response
-      
-      response = self.sock.recv(4096)
+
+      response = self.recieve_response()
       parsed_response = TCPProtocolHandler.parse_data(response)["operation_payload"]
-      print("処理レスポンスを受信しました。")
       return parsed_response
-    
     except socket.timeout as e:
       print(e)
     except socket.error as e:
-      print(f"TCP通信エラー:{e}")
-      return None
-    except Exception as e:
-      print(f"予期しないエラーが発生しました{e}")
-      return None
+      print(e)
 
   # 役割：サーバーとの接続を解除する
   # 戻り値：無し
@@ -129,9 +126,9 @@ class UDPClient:
           print(f"{parsed_data['chat_data']}")
 
         # システム終了時(未実装)
-        # elif parsed_data["type"] == "STOP":
-        #   is_chat_active.set()
-        #   print(f"{parsed_data['chat_data']}")
+        elif parsed_data["type"] == "STOP":
+          is_chat_active.set()
+          print(f"{parsed_data['chat_data']}")
       except socket.timeout:
         continue
 
@@ -194,7 +191,6 @@ class ChatClient:
             token, error_messaage = self.create_room_request(room_name, password)
             if error_messaage:
               print(error_messaage)
-              # self.tcp_client.disconnect()
               continue
 
         elif choice == "2":
@@ -202,7 +198,6 @@ class ChatClient:
             room_list, error_messaage = self.get_room_list_request()
             if error_messaage:
               print(error_messaage)
-              # self.tcp_client.disconnect()
               continue
             for room_name in room_list:
               print(room_name)
@@ -228,7 +223,6 @@ class ChatClient:
             token, error_messaage = self.join_room_request(selected_room_name, password)
             if error_messaage:
               print(error_messaage)
-              # self.tcp_client.disconnect()
               continue
 
         if token:
@@ -251,10 +245,10 @@ class ChatClient:
     # リクエストの作成
     request = TCPProtocolHandler.make_create_room_request(room_name, password)
     if not request:
-      return None, "ルーム名サイズの上限を超えています。"
-    
+      return None, "送信できるデータサイズを超過しています。"
     # サーバーにルーム作成依頼
     response = self.tcp_client.send_request(request)
+    
     if not response:
       return None, "エラーが発生しました。"
     if response["error_message"]:
@@ -268,12 +262,12 @@ class ChatClient:
   def get_room_list_request(self):
     # リクエストの作成
     request = TCPProtocolHandler.make_get_room_list_request()
-    
     # サーバーにルーム一覧取得依頼
     response = self.tcp_client.send_request(request)
+
     if response is None:
       return None, "エラーが発生しました。"
-    if response["error_message"]:
+    elif response["error_message"]:
       return None, response["error_message"]
     else:
       return response["room_list"], None
@@ -283,9 +277,9 @@ class ChatClient:
   def join_room_request(self, room_name, password):
     # リクエストの作成
     request = TCPProtocolHandler.make_join_room_request(room_name, password)
-
     # サーバーにルーム参加依頼
     response = self.tcp_client.send_request(request)
+
     if response is None:
       return None, "エラーが発生しました。"
     if response["error_message"]:
