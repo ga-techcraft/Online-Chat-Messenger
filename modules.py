@@ -177,8 +177,8 @@ class UDPProtocolHandler:
   
   # 退出メッセージの作成(クライアント用)
   @staticmethod
-  def make_leave_message(room_name, token):
-    return UDPProtocolHandler.make_udp_data(type="LEAVE", room_name=room_name, token=token)
+  def make_leave_message(room_name, token, user_name):
+    return UDPProtocolHandler.make_udp_data(type="LEAVE", room_name=room_name, token=token, user_name=user_name)
   
   # リレーするチャットメッセージの作成(クライアント用)
   @staticmethod

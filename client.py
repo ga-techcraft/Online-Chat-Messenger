@@ -25,11 +25,17 @@ class TCPClient:
       return True
     
     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    self.sock.settimeout(2)
     try:
       self.sock.connect(self.server_address)
+      print("TCP接続されました。")
       return True
     except socket.error as e:
       return False
+    
+  # def recieve_response(self):
+
+  #   pass
     
   # 役割：サーバーへリクエストを送信
   # 戻り値：レスポンスデータ
@@ -37,16 +43,36 @@ class TCPClient:
     try:
       self.sock.send(request)
 
-      response = self.sock.recv(4096)
+      # response = self.sock.recv(4096)
+
+      header = self.sock.recv(32)
+      room_name_size = header[0]
+      # operation = header[1]
+      # state = header[2]
+      operation_payload_size = int.from_bytes(header[3:], "big")
+      total_body_size = room_name_size + operation_payload_size
+      
+      recieved_body_data = b""
+      while len(recieved_body_data) < total_body_size:
+        chunk = self.sock.recv(total_body_size - len(recieved_body_data))
+        recieved_body_data += chunk
+      
+      response = header + recieved_body_data
+
+
       parsed_response = TCPProtocolHandler.parse_data(response)["operation_payload"]
+      print("バリデーションレスポンスを受信しました。")
 
       if parsed_response["error_message"]:
         return parsed_response
       
       response = self.sock.recv(4096)
       parsed_response = TCPProtocolHandler.parse_data(response)["operation_payload"]
+      print("処理レスポンスを受信しました。")
       return parsed_response
     
+    except socket.timeout as e:
+      print(e)
     except socket.error as e:
       print(f"TCP通信エラー:{e}")
       return None
@@ -61,7 +87,7 @@ class TCPClient:
       return
     self.sock.close()
     self.sock = None
-    print("TCP接続を終了しました。")
+    print("TCP接続を解除しました。")
 
 # UDP通信でのデータの送受信
 class UDPClient:
@@ -167,16 +193,16 @@ class ChatClient:
             # ルーム作成依頼
             token, error_messaage = self.create_room_request(room_name, password)
             if error_messaage:
-              self.tcp_client.sock = None
               print(error_messaage)
+              # self.tcp_client.disconnect()
               continue
 
         elif choice == "2":
             # ルーム一覧取得依頼
             room_list, error_messaage = self.get_room_list_request()
             if error_messaage:
-              self.tcp_client.sock = None
               print(error_messaage)
+              # self.tcp_client.disconnect()
               continue
             for room_name in room_list:
               print(room_name)
@@ -201,8 +227,8 @@ class ChatClient:
             # ルーム参加依頼
             token, error_messaage = self.join_room_request(selected_room_name, password)
             if error_messaage:
-              self.tcp_client.sock = None
               print(error_messaage)
+              # self.tcp_client.disconnect()
               continue
 
         if token:
@@ -289,14 +315,14 @@ class ChatClient:
         if not data:
           continue
         # メッセージの作成
-        message = UDPProtocolHandler.make_chat_message(self.room_token[0], self.room_token[1], self.user_name, data)
+        message = UDPProtocolHandler.make_chat_message(room_name=self.room_token[0], token=self.room_token[1], user_name=self.user_name, chat_data=data)
         # メッセージの送信
         self.udp_client.send_message(message)
     except KeyboardInterrupt as e:
       print(e)
     finally:
       # 退出時には退出メッセージを送信
-      message = UDPProtocolHandler.make_leave_message(room_name=self.room_token[0], token=self.room_token[1])
+      message = UDPProtocolHandler.make_leave_message(room_name=self.room_token[0], token=self.room_token[1], user_name=self.user_name)
       self.udp_client.send_message(message)
       is_chat_active.set()
       recieve_message_thread.join()
@@ -305,8 +331,8 @@ if __name__ == "__main__":
   is_chat_active = threading.Event()
 
   server_ip = "127.0.0.1"
-  tcp_port = 6052
-  udp_port = 7012
+  tcp_port = 6058
+  udp_port = 7018
   tcp_client = TCPClient(server_ip, tcp_port)
   upd_client = UDPClient(server_ip, udp_port)
 

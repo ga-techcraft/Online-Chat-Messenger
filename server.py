@@ -73,13 +73,17 @@ class TCPServer:
             request = connection.recv(4096)
    
             if not request:
-               print(f"{client_address}との接続を終了します。")
+               print(f"{client_address}とのTCP接続を終了します。")
                break
 
             # リクエストの解析
             parsed_request = TCPProtocolHandler.parse_data(request)
             # リクエストのバリデーション。エラーが無ければ空文字が返ってくる
             error_message = self.chat_server.validate_request(parsed_request)
+            if error_message:
+               print(error_message)
+            else:
+               print("バリデーションに成功しました。")
             # バリデートレスポンスの作成
             response = TCPProtocolHandler.make_validate_response(error_message)
             # バリデートレスポンスの送信
@@ -99,21 +103,31 @@ class TCPServer:
                token, error_message = self.chat_server.create_room(parsed_request, client_address)
                # レスポンスの作成
                response = TCPProtocolHandler.make_token_response(token, error_message)
-
+               if error_message:
+                  print(error_message)
+               else:
+                  print("ルームの作成に成功しました。")
             elif operation == 2 and type == "GET":
                # ルーム一覧の作成。成功すれば一覧がリストで返ってくる。
                room_list, error_message = self.chat_server.get_room_list()
                # レスポンスの作成
                response = TCPProtocolHandler.make_room_list_response(room_list, error_message)
-
+               if error_message:
+                  print(error_message)
+               else:
+                  print("ルーム一覧の取得に成功しました。")
             elif operation == 2 and type == "JOIN":
                # ルームへ追加。成功すればトークンが返ってくる。
                token, error_message = self.chat_server.join_room(parsed_request, client_address)
                # レスポンスの作成
                response = TCPProtocolHandler.make_token_response(token, error_message)
-
+               if error_message:
+                  print(error_message)
+               else:
+                  print("ルームの参加に成功しました。")
             # レスポンスの送信(共通のため最後処理する)
-            connection.send(response)
+            connection.sendall(response)
+            print("レスポンスを送信しました。")
       except OSError as e:
          print(e)
       except KeyboardInterrupt as e:
@@ -159,7 +173,7 @@ class UDPServer:
       try:
          parsed_message = UDPProtocolHandler.parse_message(message)
          content = parsed_message["content"]
-         print(f"{parsed_message}を受信しました。")
+         print(f"{content["user_name"]}から{content["type"]}:{content["chat_data"]}を受信しました。")
          
          # 通常のチャット時
          if content["type"] == "CHAT":
@@ -412,8 +426,8 @@ if __name__ == "__main__":
    is_system_active = threading.Event()
 
    server_ip = "0.0.0.0"
-   tcp_port = 6052
-   udp_port = 7012
+   tcp_port = 6058
+   udp_port = 7018
   
    try:
       chat_server = ChatServer()
