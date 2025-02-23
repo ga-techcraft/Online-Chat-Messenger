@@ -1,5 +1,8 @@
 # Chat Messenger Messenger
 
+## シミュレーション
+![シミュレーション](online_chat_messenger.gif)
+
 ## 目次
 - [概要](#概要)
 - [システムの全体構成](#システムの全体構成)
